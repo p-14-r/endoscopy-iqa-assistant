@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+
+# virtual env
+.venv/
+
+# mac
+.DS_Store
+
+# data (你可以选择是否忽略原始数据)
+data/raw/
+
+# outputs
+data/outputs/
+
+# IDE
+.idea/
