@@ -1,0 +1,4 @@
+# Optional neural baselines for Phase 1
+# Install only when you need pyiqa/torch-based paths.
+torch
+pyiqa
