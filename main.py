@@ -1,102 +1,68 @@
+import argparse
+import json
+from pathlib import Path
+
 import cv2
-import os
 import matplotlib.pyplot as plt
-from scorer import (
-    compute_blur_value,
-    normalize_blur_score,
-    compute_exposure_score,
-    compute_dark_visibility_score,
-    compute_fov_mask
-)
-from patch_scorer import get_worst_patches
+
+from artifacts.null_artifact_model import NullArtifactModel
+from enhancers.zero_dce_enhancer import ZeroDCEEnhancer
+from models.heuristic_iqa import HeuristicIQAModel
+from models.pyiqa_model import PyIQAModel
+from scorer import compute_fov_mask
 
 
-def main():
-    # -------------------------
-    # 1. Load image
-    # -------------------------
-    image_path = os.path.join("data", "raw", "test.jpg")
-    print("Trying to load image from:", image_path)
+def build_iqa_model(args):
+    if args.iqa_mode == "heuristic":
+        return HeuristicIQAModel(max_patches=args.max_patches)
 
-    image = cv2.imread(image_path)
+    if args.iqa_mode == "pyiqa":
+        return PyIQAModel(metric_name=args.pyiqa_metric, device=args.device)
 
-    if image is None:
-        print("Error: failed to load image.")
-        return
+    raise ValueError(f"Unsupported iqa_mode: {args.iqa_mode}")
 
-    print("Image loaded successfully.")
-    print("Image shape:", image.shape)
 
-    # -------------------------
-    # 2. Global metrics
-    # -------------------------
-    blur_value = compute_blur_value(image)
-    blur_score = normalize_blur_score(blur_value)
+def maybe_enhance(image, args):
+    if args.enhancer == "none":
+        return image, {"name": "none", "enabled": False}
 
-    exposure_score, mean_val = compute_exposure_score(image)
+    if args.enhancer == "zero_dce":
+        enhancer = ZeroDCEEnhancer(
+            checkpoint_path=args.zero_dce_checkpoint,
+            device=args.device,
+            strict=False,
+        )
+        result = enhancer.enhance(image)
+        meta = {"name": result.name, "enabled": True, **(result.metadata or {})}
+        return result.enhanced_image, meta
 
-    dark_visibility_score, dark_ratio, bad_dark_ratio = compute_dark_visibility_score(image)
+    raise ValueError(f"Unsupported enhancer: {args.enhancer}")
 
-    fov_mask = compute_fov_mask(image)
 
-    print(f"Blur value: {blur_value:.2f}")
-    print(f"Blur score: {blur_score:.3f}")
+def save_visualizations(image_bgr, fov_mask, worst_patches, output_dir: Path, patch_size: int = 64):
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Exposure mean: {mean_val:.3f}")
-    print(f"Exposure score (weak reference): {exposure_score:.3f}")
-
-    print(f"Dark ratio (inside FOV): {dark_ratio:.3f}")
-    print(f"Bad dark ratio: {bad_dark_ratio:.3f}")
-    print(f"Dark visibility score: {dark_visibility_score:.3f}")
-
-    # -------------------------
-    # 3. Worst patches
-    # -------------------------
-    worst_patches = get_worst_patches(image)
-    print(f"Number of worst patches selected: {len(worst_patches)}")
-
-    # -------------------------
-    # 4. Convert for display
-    # -------------------------
-    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-    # -------------------------
-    # 5. Draw worst patches
-    # -------------------------
+    image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
     vis = image_rgb.copy()
 
-    patch_size = 64
-
     for score, x, y in worst_patches:
-        cv2.rectangle(
-            vis,
-            (x, y),
-            (x + patch_size, y + patch_size),
-            (255, 0, 0),
-            2
-        )
+        cv2.rectangle(vis, (x, y), (x + patch_size, y + patch_size), (255, 0, 0), 2)
 
-    # -------------------------
-    # 6. Show worst patches
-    # -------------------------
+    # Worst patch overlay
     plt.figure(figsize=(7, 7))
     plt.imshow(vis)
     plt.title("Worst patches")
     plt.axis("off")
-    plt.show()
+    worst_path = output_dir / "worst_patches.png"
+    plt.tight_layout()
+    plt.savefig(worst_path, dpi=150)
+    plt.close()
 
-    # -------------------------
-    # 7. Show original + FOV mask
-    # -------------------------
+    # Original + FOV mask
     plt.figure(figsize=(12, 5))
-
     plt.subplot(1, 2, 1)
     plt.imshow(image_rgb)
-    plt.title(
-        f"Original\n"
-        f"Blur={blur_score:.3f} | DarkVis={dark_visibility_score:.3f}\n"
-        f"DarkRatio={dark_ratio:.3f} | BadDark={bad_dark_ratio:.3f}"
-    )
+    plt.title("Original")
     plt.axis("off")
 
     plt.subplot(1, 2, 2)
@@ -104,8 +70,107 @@ def main():
     plt.title("FOV Mask")
     plt.axis("off")
 
+    compare_path = output_dir / "original_and_fov.png"
     plt.tight_layout()
-    plt.show()
+    plt.savefig(compare_path, dpi=150)
+    plt.close()
+
+    return {"worst_patches": str(worst_path), "original_and_fov": str(compare_path)}
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Endoscopy IQA assistant Phase 1 runner")
+    parser.add_argument(
+        "--image",
+        default="data/calibration/good/202511241219G061.jpg",
+        help="Path to input image",
+    )
+    parser.add_argument("--output-dir", default="outputs/run", help="Directory for output artifacts")
+
+    parser.add_argument(
+        "--iqa-mode",
+        choices=["heuristic", "pyiqa"],
+        default="heuristic",
+        help="IQA backend: current heuristic baseline or optional neural pyiqa backend",
+    )
+    parser.add_argument("--pyiqa-metric", default="hyperiqa", help="Metric name for pyiqa mode")
+    parser.add_argument("--max-patches", type=int, default=20, help="Max worst patches for heuristic mode")
+
+    parser.add_argument(
+        "--enhancer",
+        choices=["none", "zero_dce"],
+        default="none",
+        help="Optional enhancer backend",
+    )
+    parser.add_argument(
+        "--zero-dce-checkpoint",
+        default=None,
+        help="Path to Zero-DCE checkpoint (optional). If missing, image is left unchanged.",
+    )
+
+    parser.add_argument("--device", default=None, help="Torch device override, e.g., cpu/cuda")
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+
+    image_path = Path(args.image)
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    image = cv2.imread(str(image_path))
+    if image is None:
+        raise FileNotFoundError(f"Failed to load image: {image_path}")
+
+    image_for_iqa, enhancement_meta = maybe_enhance(image, args)
+
+    iqa_model = build_iqa_model(args)
+    iqa_result = iqa_model.predict(image_for_iqa)
+
+    artifact_result = NullArtifactModel().predict(image_for_iqa)
+
+    fov_mask = compute_fov_mask(image_for_iqa)
+    worst_patches = []
+    if iqa_result.patch_scores:
+        worst_patches = [(p["score"], int(p["x"]), int(p["y"])) for p in iqa_result.patch_scores]
+
+    vis_paths = save_visualizations(
+        image_for_iqa,
+        fov_mask,
+        worst_patches,
+        output_dir=output_dir,
+        patch_size=64,
+    )
+
+    if args.enhancer != "none":
+        enhanced_path = output_dir / "enhanced_image.png"
+        cv2.imwrite(str(enhanced_path), image_for_iqa)
+        vis_paths["enhanced_image"] = str(enhanced_path)
+
+    report = {
+        "input_image": str(image_path),
+        "iqa_mode": args.iqa_mode,
+        "iqa_result": {
+            "name": iqa_result.name,
+            "score": iqa_result.score,
+            "metadata": iqa_result.metadata,
+            "num_patches": len(iqa_result.patch_scores or []),
+        },
+        "artifact_result": {
+            "name": artifact_result.name,
+            "artifact_score": artifact_result.artifact_score,
+            "metadata": artifact_result.metadata,
+        },
+        "enhancement": enhancement_meta,
+        "outputs": vis_paths,
+    }
+
+    report_path = output_dir / "report.json"
+    with report_path.open("w", encoding="utf-8") as f:
+        json.dump(report, f, indent=2)
+
+    print(json.dumps(report, indent=2))
 
 
 if __name__ == "__main__":

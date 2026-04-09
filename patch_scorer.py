@@ -144,3 +144,19 @@ def get_worst_patches(image, max_patches=20):
     patches = nms_patches(patches, patch_size=64, iou_thresh=0.3)
 
     return patches[:max_patches]
+
+
+def compute_patch_based_score(image, max_patches=20):
+    """
+    Compatibility helper for batch calibration scripts.
+    Returns:
+      final_score: 0..1 where higher means better visibility in selected patches
+      worst_patches: selected patch tuples (badness_score, x, y)
+    """
+    worst_patches = get_worst_patches(image, max_patches=max_patches)
+    if not worst_patches:
+        return 1.0, []
+
+    mean_badness = float(np.mean([p[0] for p in worst_patches]))
+    final_score = float(np.clip(1.0 - mean_badness, 0.0, 1.0))
+    return final_score, worst_patches
