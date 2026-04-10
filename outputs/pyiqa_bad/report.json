@@ -1,0 +1,28 @@
+{
+  "input_image": "data/calibration/bad/202511241219G015.jpg",
+  "iqa_mode": "pyiqa",
+  "iqa_result": {
+    "name": "pyiqa_hyperiqa",
+    "score": 0.47373297810554504,
+    "metadata": {
+      "metric_name": "hyperiqa",
+      "device": "cpu"
+    },
+    "num_patches": 0
+  },
+  "artifact_result": {
+    "name": "null_artifact_model",
+    "artifact_score": 0.0,
+    "metadata": {
+      "note": "Artifact model not integrated in Phase 1."
+    }
+  },
+  "enhancement": {
+    "name": "none",
+    "enabled": false
+  },
+  "outputs": {
+    "worst_patches": "outputs/pyiqa_bad/worst_patches.png",
+    "original_and_fov": "outputs/pyiqa_bad/original_and_fov.png"
+  }
+}
