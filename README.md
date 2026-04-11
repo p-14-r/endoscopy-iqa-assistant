@@ -71,10 +71,6 @@ pip install -r requirements.txt
 
 If you want optional neural baselines (PyIQA/Zero-DCE path), install:
 
-```bash
-pip install -r requirements-optional-neural.txt
-```
-
 ---
 
 ## How to run
@@ -91,6 +87,16 @@ python main.py --image data/calibration/good/202511241219G061.jpg --iqa-mode heu
 python main.py --image data/calibration/good/202511241219G061.jpg --iqa-mode pyiqa --pyiqa-metric hyperiqa --enhancer none --output-dir outputs/pyiqa
 ```
 
+### 2b) Fusion IQA (heuristic + neural)
+
+```bash
+python main.py --image data/calibration/good/202511241219G061.jpg --iqa-mode fusion --pyiqa-metric hyperiqa --fusion-w1 0.7 --fusion-w2 0.3 --enhancer none --output-dir outputs/fusion
+```
+
+Fusion currently uses:
+`fusion_score = w1 * heuristic + w2 * neural`
+and writes `fusion_breakdown` (score, components, weights) to `report.json`.
+
 ### 3) Optional Zero-DCE enhancement + heuristic IQA
 
 ```bash
@@ -99,13 +105,13 @@ python main.py --image data/calibration/good/202511241219G061.jpg --iqa-mode heu
 
 If no checkpoint is provided for Zero-DCE, enhancer runs in safe fallback mode (input image unchanged) and reports warning metadata.
 
-### 4) Compare heuristic vs neural IQA (same image)
+### 4) Compare heuristic vs neural vs fusion IQA (same image)
 
 ```bash
-python compare_iqa_modes.py --image data/calibration/good/202511241219G061.jpg --output outputs/compare_iqa.json --pyiqa-metric hyperiqa
+python compare_iqa_modes.py --image data/calibration/good/202511241219G061.jpg --output outputs/compare_iqa.json --pyiqa-metric hyperiqa --fusion-w1 0.7 --fusion-w2 0.3
 ```
 
-This writes both runs into one JSON for side-by-side inspection.
+This writes all three runs into one JSON for side-by-side inspection.
 
 ### 5) Small-subset smoke test (Phase 1 only)
 

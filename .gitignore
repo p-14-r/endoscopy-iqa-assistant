@@ -13,6 +13,7 @@ data/raw/
 
 # outputs
 data/outputs/
+outputs/
 
 # IDE
 .idea/
