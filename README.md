@@ -97,6 +97,9 @@ Fusion currently uses:
 `fusion_score = w1 * heuristic + w2 * neural`
 and writes `fusion_breakdown` (score, components, weights) to `report.json`.
 
+```bash
+python main.py --image data/calibration/good/202511241219G061.jpg --iqa-mode fusion --pyiqa-metric hyperiqa --fusion-w1 0.7 --fusion-w2 0.3 --enhancer none --output-dir outputs/fusion
+
 ### 3) Optional Zero-DCE enhancement + heuristic IQA
 
 ```bash
