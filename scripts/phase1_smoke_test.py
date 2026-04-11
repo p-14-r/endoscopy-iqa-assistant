@@ -16,8 +16,6 @@ def parse_args():
     p.add_argument("--max-patches", type=int, default=20)
     p.add_argument("--enhancer", choices=["none", "zero_dce"], default="none")
     p.add_argument("--zero-dce-checkpoint", default=None)
-    p.add_argument("--fusion-w1", type=float, default=0.7)
-    p.add_argument("--fusion-w2", type=float, default=0.3)
     return p.parse_args()
 
 
@@ -27,25 +25,13 @@ def collect_subset(max_images: int):
 
 
 class _Args:
-    def __init__(
-        self,
-        iqa_mode,
-        pyiqa_metric,
-        device,
-        max_patches,
-        enhancer,
-        zero_dce_checkpoint,
-        fusion_w1,
-        fusion_w2,
-    ):
+    def __init__(self, iqa_mode, pyiqa_metric, device, max_patches, enhancer, zero_dce_checkpoint):
         self.iqa_mode = iqa_mode
         self.pyiqa_metric = pyiqa_metric
         self.device = device
         self.max_patches = max_patches
         self.enhancer = enhancer
         self.zero_dce_checkpoint = zero_dce_checkpoint
-        self.fusion_w1 = fusion_w1
-        self.fusion_w2 = fusion_w2
 
 
 def run_one(image_path: str, mode: str, cfg):
@@ -60,8 +46,6 @@ def run_one(image_path: str, mode: str, cfg):
         max_patches=cfg.max_patches,
         enhancer=cfg.enhancer,
         zero_dce_checkpoint=cfg.zero_dce_checkpoint,
-        fusion_w1=cfg.fusion_w1,
-        fusion_w2=cfg.fusion_w2,
     )
 
     image_for_iqa, enhancement_meta = maybe_enhance(image, args)
@@ -93,16 +77,6 @@ def main():
                 {
                     "image": image_path,
                     "iqa_mode": "pyiqa",
-                    "error": str(exc),
-                }
-            )
-        try:
-            out["results"].append(run_one(image_path, "fusion", args))
-        except Exception as exc:  # optional neural path may be unavailable
-            out["results"].append(
-                {
-                    "image": image_path,
-                    "iqa_mode": "fusion",
                     "error": str(exc),
                 }
             )

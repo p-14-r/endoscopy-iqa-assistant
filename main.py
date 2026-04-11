@@ -7,29 +7,17 @@ import matplotlib.pyplot as plt
 
 from artifacts.null_artifact_model import NullArtifactModel
 from enhancers.zero_dce_enhancer import ZeroDCEEnhancer
-from models.fusion_iqa import FusionIQAModel
 from models.heuristic_iqa import HeuristicIQAModel
 from models.pyiqa_model import PyIQAModel
 from scorer import compute_fov_mask
 
 
 def build_iqa_model(args):
-    heuristic_model = HeuristicIQAModel(max_patches=args.max_patches)
-
     if args.iqa_mode == "heuristic":
-        return heuristic_model
+        return HeuristicIQAModel(max_patches=args.max_patches)
 
     if args.iqa_mode == "pyiqa":
         return PyIQAModel(metric_name=args.pyiqa_metric, device=args.device)
-
-    if args.iqa_mode == "fusion":
-        neural_model = PyIQAModel(metric_name=args.pyiqa_metric, device=args.device)
-        return FusionIQAModel(
-            heuristic_model=heuristic_model,
-            neural_model=neural_model,
-            w_heuristic=args.fusion_w1,
-            w_neural=args.fusion_w2,
-        )
 
     raise ValueError(f"Unsupported iqa_mode: {args.iqa_mode}")
 
@@ -101,14 +89,12 @@ def parse_args():
 
     parser.add_argument(
         "--iqa-mode",
-        choices=["heuristic", "pyiqa", "fusion"],
+        choices=["heuristic", "pyiqa"],
         default="heuristic",
-        help="IQA backend: heuristic baseline, pyiqa neural baseline, or weighted fusion",
+        help="IQA backend: current heuristic baseline or optional neural pyiqa backend",
     )
     parser.add_argument("--pyiqa-metric", default="hyperiqa", help="Metric name for pyiqa mode")
     parser.add_argument("--max-patches", type=int, default=20, help="Max worst patches for heuristic mode")
-    parser.add_argument("--fusion-w1", type=float, default=0.7, help="Fusion weight for heuristic score")
-    parser.add_argument("--fusion-w2", type=float, default=0.3, help="Fusion weight for neural score")
 
     parser.add_argument(
         "--enhancer",
@@ -179,13 +165,6 @@ def main():
         "enhancement": enhancement_meta,
         "outputs": vis_paths,
     }
-
-    if args.iqa_mode == "fusion" and iqa_result.metadata:
-        report["fusion_breakdown"] = {
-            "fusion_score": iqa_result.metadata.get("fusion_score", iqa_result.score),
-            "components": iqa_result.metadata.get("components", {}),
-            "weights": iqa_result.metadata.get("weights", {}),
-        }
 
     report_path = output_dir / "report.json"
     with report_path.open("w", encoding="utf-8") as f:

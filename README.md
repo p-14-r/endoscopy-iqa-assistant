@@ -71,10 +71,6 @@ pip install -r requirements.txt
 
 If you want optional neural baselines (PyIQA/Zero-DCE path), install:
 
-```bash
-pip install -r requirements-optional-neural.txt
-```
-
 ---
 
 ## How to run
