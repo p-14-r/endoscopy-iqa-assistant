@@ -7,17 +7,29 @@ import matplotlib.pyplot as plt
 
 from artifacts.null_artifact_model import NullArtifactModel
 from enhancers.zero_dce_enhancer import ZeroDCEEnhancer
+from models.fusion_iqa import FusionIQAModel
 from models.heuristic_iqa import HeuristicIQAModel
 from models.pyiqa_model import PyIQAModel
 from scorer import compute_fov_mask
 
 
 def build_iqa_model(args):
+    heuristic_model = HeuristicIQAModel(max_patches=args.max_patches)
+
     if args.iqa_mode == "heuristic":
-        return HeuristicIQAModel(max_patches=args.max_patches)
+        return heuristic_model
 
     if args.iqa_mode == "pyiqa":
         return PyIQAModel(metric_name=args.pyiqa_metric, device=args.device)
+
+    if args.iqa_mode == "fusion":
+        neural_model = PyIQAModel(metric_name=args.pyiqa_metric, device=args.device)
+        return FusionIQAModel(
+            heuristic_model=heuristic_model,
+            neural_model=neural_model,
+            w_heuristic=args.fusion_w1,
+            w_neural=args.fusion_w2,
+        )
 
     raise ValueError(f"Unsupported iqa_mode: {args.iqa_mode}")
 
@@ -48,7 +60,6 @@ def save_visualizations(image_bgr, fov_mask, worst_patches, output_dir: Path, pa
     for score, x, y in worst_patches:
         cv2.rectangle(vis, (x, y), (x + patch_size, y + patch_size), (255, 0, 0), 2)
 
-    # Worst patch overlay
     plt.figure(figsize=(7, 7))
     plt.imshow(vis)
     plt.title("Worst patches")
@@ -58,7 +69,6 @@ def save_visualizations(image_bgr, fov_mask, worst_patches, output_dir: Path, pa
     plt.savefig(worst_path, dpi=150)
     plt.close()
 
-    # Original + FOV mask
     plt.figure(figsize=(12, 5))
     plt.subplot(1, 2, 1)
     plt.imshow(image_rgb)
@@ -89,12 +99,14 @@ def parse_args():
 
     parser.add_argument(
         "--iqa-mode",
-        choices=["heuristic", "pyiqa"],
+        choices=["heuristic", "pyiqa", "fusion"],
         default="heuristic",
-        help="IQA backend: current heuristic baseline or optional neural pyiqa backend",
+        help="IQA backend: heuristic baseline, pyiqa neural baseline, or weighted fusion",
     )
     parser.add_argument("--pyiqa-metric", default="hyperiqa", help="Metric name for pyiqa mode")
     parser.add_argument("--max-patches", type=int, default=20, help="Max worst patches for heuristic mode")
+    parser.add_argument("--fusion-w1", type=float, default=0.7, help="Fusion weight for heuristic score")
+    parser.add_argument("--fusion-w2", type=float, default=0.3, help="Fusion weight for neural score")
 
     parser.add_argument(
         "--enhancer",
@@ -165,6 +177,14 @@ def main():
         "enhancement": enhancement_meta,
         "outputs": vis_paths,
     }
+
+    # Required fusion breakdown
+    if args.iqa_mode == "fusion" and iqa_result.metadata:
+        report["fusion_breakdown"] = {
+            "fusion_score": iqa_result.metadata.get("fusion_score", iqa_result.score),
+            "components": iqa_result.metadata.get("components", {}),
+            "weights": iqa_result.metadata.get("weights", {}),
+        }
 
     report_path = output_dir / "report.json"
     with report_path.open("w", encoding="utf-8") as f:
